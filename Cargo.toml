@@ -1,0 +1,18 @@
+[package]
+name = "servant-log"
+version = "0.1.0"
+authors = ["automan.yang <automanyang@gmail.com>"]
+description = "servant-log是servant的日志库，提供多个文件循环记录日志的功能。"
+repository = "https://github.com/automanyang/servant-log"
+readme = "README.md"
+keywords = ["log"]
+categories = ["network-programming"]
+license = "MIT"
+edition = "2018"
+
+[dependencies]
+log = "^0.4.8"
+env_logger = "^0.7.1"
+chrono = "^0.4.9"
+ring-channel = "^0.7"
+# lazy_static = "^1.4"
