@@ -13,6 +13,7 @@ macro_rules! init_scroped_logger {
 
 // --
 
+#[derive(Default)]
 pub struct ScropedLogger;
 
 impl ScropedLogger {
