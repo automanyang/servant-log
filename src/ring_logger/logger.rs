@@ -5,26 +5,7 @@ use log::{Level, Log, Metadata, Record};
 
 use super::sink::spawn;
 use ring_channel::{ring_channel, RingSender};
-use std::{fmt::Write as FmtWrite, num::NonZeroUsize, thread::JoinHandle};
-
-// --
-
-static mut SENDER: Option<RingSender<String>> = None;
-
-// --
-
-fn spawn_sink(name: String, limit: u64, roll: usize) -> JoinHandle<()> {
-    unsafe {
-        assert!(SENDER.is_none());
-    }
-
-    const CAPICITY: usize = 10;
-    let (tx, rx) = ring_channel(NonZeroUsize::new(CAPICITY).unwrap());
-    unsafe {
-        SENDER = Some(tx);
-    }
-    spawn(rx, name, limit, roll)
-}
+use std::{fmt::Write as FmtWrite, num::NonZeroUsize, sync::Mutex, thread::JoinHandle};
 
 // --
 
@@ -34,25 +15,25 @@ pub struct RingLogger {
 
 impl RingLogger {
     pub fn new(level: Level, name: String, limit: u64, roll: usize) -> RingLogger {
-        let sink_handle = Some(spawn_sink(name, limit, roll));
+        const CAPICITY: usize = 10;
+        let (tx, rx) = ring_channel(NonZeroUsize::new(CAPICITY).unwrap());
+        let sink_handle = spawn(rx, name, limit, roll);
 
-        let logger = Logger { level };
+        let logger = Logger {
+            level,
+            tx: Mutex::new(tx),
+        };
         log::set_boxed_logger(Box::new(logger)).unwrap();
         log::set_max_level(level.to_level_filter());
         log::info!("start of ring-logger");
 
-        RingLogger { sink_handle }
+        RingLogger { sink_handle: Some(sink_handle) }
     }
 }
 
 impl Drop for RingLogger {
     fn drop(&mut self) {
         log::info!("end of ring-logger");
-
-        unsafe {
-            // 关闭sender，sink_spawn线程也就自动退出了。
-            SENDER = None;
-        }
 
         // 等待sink_spawn线程退出
         self.sink_handle.take().map(JoinHandle::join);
@@ -63,6 +44,7 @@ impl Drop for RingLogger {
 
 struct Logger {
     level: Level,
+    tx: Mutex<RingSender<String>>,
 }
 
 impl Log for Logger {
@@ -91,11 +73,8 @@ impl Log for Logger {
             )
             .expect("writeln error");
 
-            if let Some(tx) = unsafe { SENDER.as_mut() } {
-                tx.send(msg).expect("send error");
-            } else {
-                // println!("error: {:?}", msg);
-                // panic!("panic: SENDER has been set to None.");
+            if let Ok(mut g) = self.tx.lock() {
+                g.send(msg).expect("send error");
             }
         }
     }
