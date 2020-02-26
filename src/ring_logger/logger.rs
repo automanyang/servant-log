@@ -27,7 +27,9 @@ impl RingLogger {
         log::set_max_level(level.to_level_filter());
         log::info!("start of ring-logger");
 
-        RingLogger { sink_handle: Some(sink_handle) }
+        RingLogger {
+            sink_handle: Some(sink_handle),
+        }
     }
 }
 
@@ -35,6 +37,10 @@ impl Drop for RingLogger {
     fn drop(&mut self) {
         log::info!("end of ring-logger");
 
+        unsafe {
+            let l = log::logger() as *const dyn Log as *const Logger as *mut Logger;
+            Box::from_raw(l);
+        }
         // 等待sink_spawn线程退出
         self.sink_handle.take().map(JoinHandle::join);
     }
