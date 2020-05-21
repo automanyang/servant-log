@@ -7,8 +7,8 @@ mod logger;
 
 #[macro_export]
 macro_rules! init_ring_logger {
-    ($a:expr, $b:expr, $c:expr, $d:expr) => {
-        let _ring_logger = servant_log::RingLogger::new($a, $b, $c, $d);
+    ($cap:expr, $a:expr, $b:expr, $c:expr, $d:expr) => {
+        let _ring_logger = servant_log::RingLogger::new($cap, $a, $b, $c, $d);
     };
 }
 

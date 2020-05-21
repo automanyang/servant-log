@@ -1,22 +1,25 @@
 // -- sink.rs --
 
 use {
-    ring_channel::RingReceiver,
+    chrono::Local,
+    crossbeam_channel::Receiver,
     std::{
         fs::{File, OpenOptions},
         io::{self, Write},
+        sync::atomic::{AtomicU64, Ordering},
         thread::{self, JoinHandle},
     },
 };
 
 // --
 
-pub fn spawn(
-    mut rx: RingReceiver<String>,
-    mut name: String,
-    limit: u64,
-    roll: usize,
-) -> JoinHandle<()> {
+static MSG_DROPED: AtomicU64 = AtomicU64::new(0);
+
+pub fn drop_msg() {
+    MSG_DROPED.fetch_add(1, Ordering::SeqCst);
+}
+
+pub fn spawn(rx: Receiver<String>, mut name: String, limit: u64, roll: usize) -> JoinHandle<()> {
     thread::spawn(move || {
         if name.is_empty() {
             name = std::env::current_exe()
@@ -31,6 +34,18 @@ pub fn spawn(
 
         while let Ok(msg) = rx.recv() {
             f.write(msg.as_bytes()).expect("write to file error");
+            if rx.is_empty() && MSG_DROPED.load(Ordering::Relaxed) > 0 {
+                f.write_fmt(format_args!(
+                    "{} {:<5} [{}:{}:{}] message droped: {}\n",
+                    Local::now().format("%Y-%m-%d %H:%M:%S.%6f"),
+                    log::Level::Warn.to_string(),
+                    module_path!(),
+                    file!(),
+                    line!(),
+                    MSG_DROPED.swap(0, Ordering::Relaxed)
+                ))
+                .expect("write message droped count to file error");
+            }
         }
     })
 }

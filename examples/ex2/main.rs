@@ -6,7 +6,7 @@ extern crate servant_log;
 // --
 
 fn main() {
-    init_ring_logger!(log::Level::Trace, String::new(), 1024*32, 3);
+    init_ring_logger!(100, log::Level::Trace, String::new(), 1024*32, 5);
 
     log::debug!("this is a debug {}", "message");
     log::error!("this is printed by default");
@@ -20,6 +20,12 @@ fn main() {
         log::info!("this is {}", i);
     }
 
+    std::thread::sleep(std::time::Duration::from_millis(1000));
+    for i in 0..300 {
+        log::info!("this2 is {}", i);
+    }
+
+
     example::test();
 }
 
@@ -28,19 +34,5 @@ fn main() {
 mod example {
     pub fn test() {
         log::info!("from Example::test()");
-    }
-}
-
-// --
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        super::logger::testcase_init();
-
-        log::error!("This record will be captured by `cargo test`");
-
-        assert_eq!(2, 1 + 12);
     }
 }

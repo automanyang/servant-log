@@ -1,11 +1,12 @@
 // -- logger.rs --
 
-use chrono::Local;
-use log::{Level, Log, Metadata, Record};
-
-use super::sink::spawn;
-use ring_channel::{ring_channel, RingSender};
-use std::{fmt::Write as FmtWrite, num::NonZeroUsize, sync::Mutex, thread::JoinHandle};
+use {
+    super::sink::{drop_msg, spawn},
+    chrono::Local,
+    crossbeam_channel::{bounded, Sender, TrySendError},
+    log::{Level, Log, Metadata, Record},
+    std::{fmt::Write as FmtWrite, thread::JoinHandle},
+};
 
 // --
 
@@ -14,16 +15,12 @@ pub struct RingLogger {
 }
 
 impl RingLogger {
-    pub fn new(level: Level, name: String, limit: u64, roll: usize) -> RingLogger {
-        const CAPICITY: usize = 10;
-        let (tx, rx) = ring_channel(NonZeroUsize::new(CAPICITY).unwrap());
+    pub fn new(cap: usize, level: Level, name: String, limit: u64, roll: usize) -> RingLogger {
+        let (tx, rx) = bounded(cap);
         let sink_handle = spawn(rx, name, limit, roll);
 
-        let logger = Logger {
-            level,
-            tx: Mutex::new(tx),
-        };
-        log::set_boxed_logger(Box::new(logger)).unwrap();
+        let logger = Logger { level, tx };
+        log::set_boxed_logger(Box::new(logger)).expect("set_boxed_logger error");
         log::set_max_level(level.to_level_filter());
         log::info!("start of ring-logger");
 
@@ -50,7 +47,7 @@ impl Drop for RingLogger {
 
 struct Logger {
     level: Level,
-    tx: Mutex<RingSender<String>>,
+    tx: Sender<String>,
 }
 
 impl Log for Logger {
@@ -60,27 +57,23 @@ impl Log for Logger {
 
     fn log(&self, record: &Record) {
         if self.enabled(record.metadata()) {
-            let level_string = { record.level().to_string() };
-            let target = if !record.target().is_empty() {
-                record.target()
-            } else {
-                record.module_path().unwrap_or_default()
-            };
             let mut msg = String::new();
             writeln!(
                 &mut msg,
                 "{} {:<5} [{}:{}:{}] {}",
                 Local::now().format("%Y-%m-%d %H:%M:%S.%6f"),
-                level_string,
-                target,
+                record.level().to_string(),
+                record.target(),
                 record.file().unwrap_or("<unknown file>"),
                 record.line().unwrap_or(0),
                 record.args()
             )
             .expect("writeln error");
 
-            if let Ok(mut g) = self.tx.lock() {
-                g.send(msg).expect("send error");
+            match self.tx.try_send(msg) {
+                Err(TrySendError::Full(_)) => drop_msg(),
+                Err(TrySendError::Disconnected(_)) => panic!("try_send disconnected"),
+                _ => {}
             }
         }
     }
