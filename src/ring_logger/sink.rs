@@ -6,20 +6,20 @@ use {
     std::{
         fs::{File, OpenOptions},
         io::{self, Write},
-        sync::atomic::{AtomicU64, Ordering},
+        sync::atomic::{AtomicUsize, Ordering},
         thread::{self, JoinHandle},
     },
 };
 
 // --
 
-static MSG_DROPED: AtomicU64 = AtomicU64::new(0);
+static MSG_DROPED: AtomicUsize = AtomicUsize::new(0);
 
-pub fn drop_msg() {
-    MSG_DROPED.fetch_add(1, Ordering::SeqCst);
+pub(crate) fn drop_msg() {
+    MSG_DROPED.fetch_add(1, Ordering::Relaxed);
 }
 
-pub fn spawn(rx: Receiver<String>, mut name: String, limit: u64, roll: usize) -> JoinHandle<()> {
+pub(crate) fn spawn(rx: Receiver<String>, mut name: String, limit: u64, roll: usize) -> JoinHandle<()> {
     thread::spawn(move || {
         if name.is_empty() {
             name = std::env::current_exe()
